@@ -15,13 +15,14 @@
         android:layout_width="253dp"
         android:layout_height="249dp"
         android:text="@string/push_to_talk"
-        android:id="@+id/button"
+        android:id="@+id/talkButton"
         android:layout_gravity="center"
-        android:enabled="false"
+        android:enabled="true"
         android:clickable="true"
         style="@style/AppTheme"
         android:background="@drawable/pushbutton"
         android:textColor="@color/colorText"
         android:textStyle="bold"
-        android:textSize="@dimen/abc_text_size_headline_material" />
+        android:textSize="@dimen/abc_text_size_headline_material"
+        android:nestedScrollingEnabled="true" />
 </FrameLayout>

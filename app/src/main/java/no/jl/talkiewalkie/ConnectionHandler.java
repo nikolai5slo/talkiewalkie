@@ -4,26 +4,32 @@ import android.app.Activity;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.net.DhcpInfo;
+import android.net.NetworkInfo;
+import android.net.wifi.WifiManager;
 import android.net.wifi.WpsInfo;
 import android.net.wifi.p2p.WifiP2pConfig;
 import android.net.wifi.p2p.WifiP2pDevice;
+import android.net.wifi.p2p.WifiP2pInfo;
 import android.net.wifi.p2p.WifiP2pManager;
 import android.net.wifi.p2p.WifiP2pManager.Channel;
 import android.net.wifi.p2p.WifiP2pManager.DnsSdServiceResponseListener;
 import android.net.wifi.p2p.WifiP2pManager.DnsSdTxtRecordListener;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceInfo;
 import android.net.wifi.p2p.nsd.WifiP2pDnsSdServiceRequest;
-import android.net.wifi.p2p.nsd.WifiP2pServiceRequest;
 import android.net.wifi.p2p.WifiP2pManager.ActionListener;
 import android.util.Log;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.Map;
 
 /**
  * Created by nikolai5 on 5/10/16.
  */
-public class ConnectionHandler extends BroadcastReceiver {
+public class ConnectionHandler extends BroadcastReceiver implements WifiP2pManager.ConnectionInfoListener{
     public static final String TAG = "ConnectionHandler";
     public static final String SERV_NAME="_talkie&walkie*";
     public static final String SERV_TYPE="_audio._udp";
@@ -48,6 +54,17 @@ public class ConnectionHandler extends BroadcastReceiver {
                 Log.d(TAG, "WifiDirect connected");
             } else {
                 Log.e(TAG, "WifiDirect connection failed.");
+            }
+
+        }else if (WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION.equals(action)) {
+            // When connection changed, request connection info
+
+            NetworkInfo networkInfo = (NetworkInfo) intent.getParcelableExtra(WifiP2pManager.EXTRA_NETWORK_INFO);
+
+            if (networkInfo.isConnected()) {
+                // We are connected with the other device, request connection
+                // info to find group owner IP
+                mManager.requestConnectionInfo(mChannel, this);
             }
         }
     }
@@ -97,12 +114,12 @@ public class ConnectionHandler extends BroadcastReceiver {
                 mManager.connect(mChannel, config, new ActionListener() {
                     @Override
                     public void onSuccess() {
-                       Log.d(TAG, "Connection to peer successful.");
+                       Log.d(TAG, "Request to connect to peer successful.");
                     }
 
                     @Override
                     public void onFailure(int reason) {
-                        Log.e(TAG, "Connection to peer failed.");
+                        Log.e(TAG, "Request to connect to peer failed.");
                     }
                 });
 
@@ -146,5 +163,64 @@ public class ConnectionHandler extends BroadcastReceiver {
                 Log.e(TAG, "Service discover failed.");
             }
         });
+    }
+
+    @Override
+    public void onConnectionInfoAvailable(WifiP2pInfo info) {
+        try {
+            InetAddress groupOwnerAddress = InetAddress.getByName(info.groupOwnerAddress.getHostAddress());
+
+        /*
+        Log.d(TAG,"Group host address: " + info.groupOwnerAddress.getHostAddress());
+        WifiManager wifii= (WifiManager) activity.getSystemService(Context.WIFI_SERVICE);
+        DhcpInfo d=wifii.getDhcpInfo();
+        Log.d(TAG,"Subnet mask: " +  intToIp(d.netmask));
+        */
+
+
+
+            // After the group negotiation, we can determine the group owner.
+            if (info.groupFormed && info.isGroupOwner) {
+                Log.d(TAG, "Connected as group over");
+                clientReady(true, groupOwnerAddress);
+                // Do whatever tasks are specific to the group owner.
+                // One common case is creating a server thread and accepting
+                // incoming connections.
+            } else if (info.groupFormed) {
+                Log.d(TAG, "Connected as client");
+                clientReady(false, groupOwnerAddress);
+                // The other device acts as the client. In this case,
+                // you'll want to create a client thread that connects to the group
+                // owner.
+            }
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private LinkedList<ConnectionStatusListener> csListeners = new LinkedList<>();
+    public void addConnectionStatusListener(ConnectionStatusListener csl){
+        csListeners.add(csl);
+    }
+
+    public void removeConnectionStatusListener(ConnectionStatusListener csl){
+        csListeners.remove(csl);
+    }
+
+    private void clientReady(boolean server, InetAddress srvAddr){
+        for (ConnectionStatusListener l: csListeners)
+            l.clientReady(server, srvAddr);
+    }
+
+    interface ConnectionStatusListener{
+        void clientReady(boolean server, InetAddress srvAddr);
+    }
+
+    private String intToIp(int i) {
+       return ((i >> 24 ) & 0xFF ) + "." +
+                   ((i >> 16 ) & 0xFF) + "." +
+                   ((i >> 8 ) & 0xFF) + "." +
+                   ( i & 0xFF) ;
     }
 }
